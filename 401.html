@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>401 — Unauthorized</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --cow-w: 220px;
+    --hole-w: 170px;
+    --hole-h: 56px;
+  }
+
+  @media (max-width: 768px) {
+    :root { --cow-w: 170px; --hole-w: 130px; --hole-h: 43px; }
+  }
+  @media (max-width: 480px) {
+    :root { --cow-w: 130px; --hole-w: 100px; --hole-h: 33px; }
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  body {
+    background: linear-gradient(180deg, #ff8d76 0%, #f77f6b 50%, #ef705d 100%);
+    position: relative;
+  }
+
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.28) 100%);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  #anim-layer {
+    position: absolute; inset: 0;
+    z-index: 2;
+    overflow: hidden;
+  }
+
+  /* Ground */
+  #ground {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 38%;
+    background: linear-gradient(180deg, #e8c49a 0%, #d4a574 100%);
+    border-radius: 80% 80% 0 0 / 20px 20px 0 0;
+  }
+  #ground::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 7px;
+    background: rgba(0,0,0,0.09);
+    border-radius: inherit;
+  }
+
+  /* Hole */
+  #hole-wrap {
+    position: absolute;
+    bottom: 36%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: var(--hole-w);
+    height: var(--hole-h);
+    z-index: 5;
+  }
+  #hole-ellipse {
+    width: 100%; height: 100%;
+    background: radial-gradient(ellipse at 50% 30%, #222 0%, #000 100%);
+    border-radius: 50%;
+    box-shadow:
+      0 6px 28px rgba(0,0,0,0.5),
+      inset 0 5px 18px rgba(0,0,0,0.8);
+    position: relative;
+    overflow: hidden;
+  }
+  #hole-rim {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 4px solid rgba(0,0,0,0);
+    pointer-events: none;
+  }
+  #hole-glow {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    opacity: 0;
+  }
+  #hole-shadow {
+    position: absolute;
+    bottom: -8px; left: 8%; right: 8%;
+    height: 16px;
+    background: rgba(0,0,0,0.22);
+    border-radius: 50%;
+    filter: blur(6px);
+  }
+  /* Dust cloud sitting around the hole */
+  #dust-cloud {
+    position: absolute;
+    bottom: 33%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    pointer-events: none;
+    z-index: 11;
+  }
+
+  /* Cow container */
+  #cow-wrap {
+    position: absolute;
+    bottom: 36%;
+    left: -15%;
+    width: var(--cow-w);
+    transform-origin: center bottom;
+    z-index: 10;
+    will-change: transform;
+  }
+  #cow-svg {
+    width: 100%;
+    height: auto;
+    overflow: visible;
+    transform: scaleX(-1);
+  }
+
+  /* Particles */
+  .particle {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    will-change: transform, opacity;
+    z-index: 12;
+  }
+  /* Chunky soil clumps */
+  .clump {
+    position: absolute;
+    border-radius: 30% 60% 40% 70%;
+    pointer-events: none;
+    will-change: transform, opacity;
+    z-index: 12;
+  }
+  /* Dust ring puff */
+  .dust-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 0px solid transparent;
+    pointer-events: none;
+    z-index: 11;
+  }
+
+  /* ── UI Layer ── */
+  #ui-layer {
+    position: absolute; inset: 0;
+    z-index: 20;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    opacity: 0;
+    pointer-events: none;
+  }
+  #ui-layer.active { pointer-events: all; }
+
+  #err-code {
+    display: flex;
+    gap: 4px;
+    line-height: 1;
+  }
+  .digit {
+    font-size: clamp(80px, 16vw, 160px);
+    font-weight: 900;
+    color: #fff;
+    letter-spacing: -0.04em;
+    opacity: 0;
+    transform: translateY(40px) scale(0.7);
+    text-shadow: 0 4px 32px rgba(0,0,0,0.18);
+    will-change: transform, opacity;
+  }
+
+  #subtitle {
+    font-size: clamp(14px, 2vw, 20px);
+    font-weight: 400;
+    color: rgba(255,255,255,0.88);
+    letter-spacing: 0.02em;
+    opacity: 0;
+    transform: translateY(18px);
+    text-shadow: 0 2px 8px rgba(0,0,0,0.14);
+    will-change: transform, opacity;
+  }
+
+  #home-btn {
+    margin-top: 8px;
+    background: #fff;
+    color: #f06048;
+    border: none;
+    border-radius: 50px;
+    padding: 14px 40px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    opacity: 0;
+    transform: scale(0.7);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.14);
+    transition: transform 0.22s cubic-bezier(.34,1.56,.64,1), box-shadow 0.22s ease;
+    will-change: transform, opacity;
+    text-decoration: none;
+    display: inline-block;
+  }
+  #home-btn:hover {
+    transform: scale(1) translateY(-3px) !important;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.22);
+  }
+  #home-btn:active {
+    transform: scale(0.97) translateY(0) !important;
+  }
+</style>
+</head>
+<body>
+
+<div id="anim-layer">
+  <div id="ground"></div>
+
+  <!-- Hole -->
+  <div id="hole-wrap">
+    <div id="hole-ellipse">
+      <div id="hole-glow"></div>
+    </div>
+    <div id="hole-rim"></div>
+    <div id="hole-shadow"></div>
+  </div>
+
+  <!-- Dust anchor point -->
+  <div id="dust-cloud"></div>
+
+  <!-- Cow SVG — viewBox 0 0 240 200 -->
+  <div id="cow-wrap">
+    <svg id="cow-svg" viewBox="0 0 240 200" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="bodyGrad" cx="48%" cy="38%" r="55%">
+          <stop offset="0%" stop-color="#ffffff"/>
+          <stop offset="100%" stop-color="#e2d8cc"/>
+        </radialGradient>
+        <radialGradient id="spotGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#3a2a18" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="#180e04" stop-opacity="0.75"/>
+        </radialGradient>
+        <radialGradient id="eyeGrad" cx="36%" cy="32%" r="62%">
+          <stop offset="0%" stop-color="#5a3a18"/>
+          <stop offset="100%" stop-color="#180c00"/>
+        </radialGradient>
+        <radialGradient id="legGrad" cx="40%" cy="30%" r="60%">
+          <stop offset="0%" stop-color="#ede4d8"/>
+          <stop offset="100%" stop-color="#c8bca8"/>
+        </radialGradient>
+        <radialGradient id="legGradFar" cx="40%" cy="30%" r="60%">
+          <stop offset="0%" stop-color="#d8cec0"/>
+          <stop offset="100%" stop-color="#b8ac9a"/>
+        </radialGradient>
+        <filter id="dropShadow" x="-15%" y="-15%" width="130%" height="130%">
+          <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="rgba(0,0,0,0.15)"/>
+        </filter>
+      </defs>
+
+      <!-- Ground shadow -->
+      <ellipse id="cowShadow" cx="120" cy="192" rx="74" ry="8"
+               fill="rgba(0,0,0,0.18)" filter="url(#dropShadow)"/>
+
+      <!-- ══ BACK LEGS (drawn before body) ══ -->
+      <!-- Each leg: upper rect + lower rect with a slight angle to form a knee -->
+
+      <!-- Back-Left leg (far, darker) -->
+      <g id="legBackLeft">
+        <!-- upper -->
+        <rect x="149" y="138" width="15" height="28" rx="7"
+              fill="url(#legGradFar)" stroke="#b0a490" stroke-width="1"/>
+        <!-- lower -->
+        <rect x="147" y="162" width="15" height="28" rx="7"
+              fill="url(#legGradFar)" stroke="#b0a490" stroke-width="1"
+              transform="rotate(4,154,162)"/>
+        <!-- hoof -->
+        <ellipse cx="153" cy="190" rx="9" ry="5.5" fill="#241808"/>
+      </g>
+
+      <!-- Back-Right leg (near) -->
+      <g id="legBackRight">
+        <!-- upper -->
+        <rect x="163" y="138" width="15" height="28" rx="7"
+              fill="url(#legGrad)" stroke="#c8bca8" stroke-width="1"/>
+        <!-- lower -->
+        <rect x="161" y="162" width="15" height="28" rx="7"
+              fill="url(#legGrad)" stroke="#c8bca8" stroke-width="1"
+              transform="rotate(4,168,162)"/>
+        <ellipse cx="167" cy="190" rx="9" ry="5.5" fill="#180e00"/>
+      </g>
+
+      <!-- ══ BODY ══ -->
+      <g id="body" transform-origin="120 132">
+        <ellipse cx="120" cy="132" rx="78" ry="54"
+                 fill="url(#bodyGrad)" stroke="#d0c8b8" stroke-width="1.5"/>
+        <!-- belly lighter -->
+        <ellipse cx="118" cy="146" rx="40" ry="25" fill="#f6f1e8" opacity="0.65"/>
+        <!-- spots -->
+        <ellipse cx="96"  cy="114" rx="20" ry="15" fill="url(#spotGrad)" transform="rotate(-14,96,114)"/>
+        <ellipse cx="146" cy="130" rx="14" ry="10" fill="url(#spotGrad)" transform="rotate(8,146,130)"/>
+        <ellipse cx="80"  cy="142" rx="10" ry="8"  fill="url(#spotGrad)" transform="rotate(4,80,142)"/>
+      </g>
+
+      <!-- ══ FRONT LEGS (drawn after body so they appear in front) ══ -->
+
+      <!-- Front-Left leg (far, darker, slightly inset) -->
+      <g id="legFrontLeft">
+        <!-- upper thigh -->
+        <rect x="76" y="140" width="15" height="27" rx="7"
+              fill="url(#legGradFar)" stroke="#b0a490" stroke-width="1"/>
+        <!-- lower shin — slight forward lean -->
+        <rect x="74" y="164" width="15" height="27" rx="7"
+              fill="url(#legGradFar)" stroke="#b0a490" stroke-width="1"
+              transform="rotate(-3,81,164)"/>
+        <!-- hoof -->
+        <ellipse cx="80" cy="191" rx="9" ry="5.5" fill="#241808"/>
+      </g>
+
+      <!-- Front-Right leg (near, lighter) -->
+      <g id="legFrontRight">
+        <!-- upper thigh -->
+        <rect x="90" y="140" width="15" height="27" rx="7"
+              fill="url(#legGrad)" stroke="#c8bca8" stroke-width="1"/>
+        <!-- lower shin -->
+        <rect x="88" y="164" width="15" height="27" rx="7"
+              fill="url(#legGrad)" stroke="#c8bca8" stroke-width="1"
+              transform="rotate(-3,95,164)"/>
+        <ellipse cx="94" cy="191" rx="9" ry="5.5" fill="#180e00"/>
+      </g>
+
+      <!-- ══ UDDER ══ -->
+      <g id="udder">
+        <ellipse cx="128" cy="168" rx="16" ry="10" fill="#f0a0b0" opacity="0.9"/>
+        <circle cx="122" cy="175" r="3.5" fill="#d47888"/>
+        <circle cx="133" cy="176" r="3.5" fill="#d47888"/>
+      </g>
+
+      <!-- ══ TAIL ══ -->
+      <g id="tail" transform-origin="194 120">
+        <path d="M 194 120 Q 222 106 228 84 Q 234 64 218 56"
+              fill="none" stroke="#c4b49a" stroke-width="6" stroke-linecap="round"/>
+        <!-- tuft -->
+        <ellipse cx="218" cy="54" rx="9" ry="11" fill="#8a7055" transform="rotate(-18,218,54)"/>
+        <ellipse cx="214" cy="50" rx="6"  ry="8"  fill="#6a5038" transform="rotate(-24,214,50)"/>
+      </g>
+
+      <!-- ══ NECK ══ -->
+      <g id="neck">
+        <path d="M 56 104 Q 46 80 50 58 Q 54 42 66 40 Q 80 38 84 40 Q 68 58 64 80 Q 62 96 70 106 Z"
+              fill="#ddd4c4" stroke="#c8bca8" stroke-width="1.2"/>
+        <!-- bell -->
+        <rect x="57" y="86" width="11" height="13" rx="2.5" fill="#f0c020" opacity="0.92"/>
+        <rect x="61" y="97"  width="3"  height="4"  rx="1"   fill="#c8a010"/>
+      </g>
+
+      <!-- ══ HEAD ══ -->
+      <g id="head" transform-origin="66 62">
+        <!-- head shape -->
+        <ellipse cx="66" cy="62" rx="36" ry="32"
+                 fill="url(#bodyGrad)" stroke="#d0c8b8" stroke-width="1.5"/>
+        <!-- forehead spot -->
+        <ellipse cx="62" cy="48" rx="15" ry="11" fill="url(#spotGrad)"
+                 transform="rotate(-8,62,48)" opacity="0.82"/>
+
+        <!-- EARS -->
+        <g id="earLeft" transform-origin="37 48">
+          <ellipse cx="37" cy="48" rx="10" ry="13" fill="#e4dcd0"
+                   stroke="#d0c8b8" stroke-width="1" transform="rotate(-28,37,48)"/>
+          <ellipse cx="37" cy="48" rx="6"  ry="8"  fill="#f0b0b0" opacity="0.72"
+                   transform="rotate(-28,37,48)"/>
+        </g>
+        <g id="earRight" transform-origin="95 48">
+          <ellipse cx="95" cy="48" rx="10" ry="13" fill="#e4dcd0"
+                   stroke="#d0c8b8" stroke-width="1" transform="rotate(28,95,48)"/>
+          <ellipse cx="95" cy="48" rx="6"  ry="8"  fill="#f0b0b0" opacity="0.72"
+                   transform="rotate(28,95,48)"/>
+        </g>
+
+        <!-- HORNS -->
+        <g id="hornLeft">
+          <path d="M 40 32 Q 32 14 38 8" fill="none"
+                stroke="#d4a828" stroke-width="5.5" stroke-linecap="round"/>
+          <circle cx="38" cy="8" r="4.5" fill="#c89820"/>
+        </g>
+        <g id="hornRight">
+          <path d="M 92 32 Q 100 14 94 8" fill="none"
+                stroke="#d4a828" stroke-width="5.5" stroke-linecap="round"/>
+          <circle cx="94" cy="8" r="4.5" fill="#c89820"/>
+        </g>
+
+        <!-- SNOUT -->
+        <g id="snout">
+          <ellipse cx="66" cy="78" rx="21" ry="15" fill="#f0c0a8"/>
+          <ellipse cx="59" cy="79" rx="5.5" ry="4.5" fill="#d08878" opacity="0.82"/>
+          <ellipse cx="73" cy="79" rx="5.5" ry="4.5" fill="#d08878" opacity="0.82"/>
+        </g>
+
+        <!-- EYE LEFT -->
+        <g id="eyeLeft">
+          <circle cx="48" cy="54" r="12" fill="#fff" stroke="#d0c8b8" stroke-width="0.8"/>
+          <circle id="irisLeft"  cx="48" cy="54" r="7.5" fill="url(#eyeGrad)"/>
+          <circle id="pupilLeft" cx="48" cy="54" r="4.5" fill="#080400"/>
+          <circle cx="50" cy="51" r="2.8" fill="rgba(255,255,255,0.82)"/>
+          <!-- blink flap (grows downward to cover eye) -->
+          <rect id="blinkFlapLeft"  x="36" y="42" width="24" height="0" rx="2" fill="#e2d8cc"/>
+          <!-- lashes -->
+          <line x1="41" y1="43" x2="39" y2="39" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="48" y1="42" x2="47" y2="38" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="55" y1="44" x2="56" y2="40" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+        </g>
+
+        <!-- EYE RIGHT -->
+        <g id="eyeRight">
+          <circle cx="84" cy="54" r="12" fill="#fff" stroke="#d0c8b8" stroke-width="0.8"/>
+          <circle id="irisRight"  cx="84" cy="54" r="7.5" fill="url(#eyeGrad)"/>
+          <circle id="pupilRight" cx="84" cy="54" r="4.5" fill="#080400"/>
+          <circle cx="86" cy="51" r="2.8" fill="rgba(255,255,255,0.82)"/>
+          <rect id="blinkFlapRight" x="72" y="42" width="24" height="0" rx="2" fill="#e2d8cc"/>
+          <line x1="77" y1="43" x2="75" y2="39" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="84" y1="42" x2="83" y2="38" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+          <line x1="91" y1="44" x2="92" y2="40" stroke="#4a3020" stroke-width="1.6" stroke-linecap="round"/>
+        </g>
+
+      </g><!-- /head -->
+
+    </svg>
+  </div><!-- /cow-wrap -->
+
+  <div id="particle-layer" style="position:absolute;inset:0;pointer-events:none;z-index:12;"></div>
+</div><!-- /anim-layer -->
+
+<!-- UI -->
+<div id="ui-layer">
+  <div id="err-code" aria-label="Error 401">
+    <span class="digit" id="d4">4</span>
+    <span class="digit" id="d0">0</span>
+    <span class="digit" id="d1">1</span>
+  </div>
+  <p id="subtitle">Sorry, you don't have access there.</p>
+  <a id="home-btn" href="/">Go Home</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/EasePack.min.js"></script>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ─── Reduced motion ─── */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.getElementById('ui-layer').style.opacity = '1';
+    document.getElementById('ui-layer').classList.add('active');
+    document.querySelectorAll('.digit').forEach(el => { el.style.opacity='1'; el.style.transform='none'; });
+    ['subtitle','home-btn'].forEach(id => {
+      const el = document.getElementById(id);
+      el.style.opacity = '1'; el.style.transform = 'none';
+    });
+    document.getElementById('cow-wrap').style.display = 'none';
+    document.getElementById('hole-wrap').style.display = 'none';
+    return;
+  }
+
+  /* ─── Refs ─── */
+  const cowWrap    = document.getElementById('cow-wrap');
+  const bodyG      = document.getElementById('body');
+  const headG      = document.getElementById('head');
+  const tail       = document.getElementById('tail');
+  const earLeft    = document.getElementById('earLeft');
+  const earRight   = document.getElementById('earRight');
+  const legFL      = document.getElementById('legFrontLeft');
+  const legFR      = document.getElementById('legFrontRight');
+  const legBL      = document.getElementById('legBackLeft');
+  const legBR      = document.getElementById('legBackRight');
+  const cowShadow  = document.getElementById('cowShadow');
+  const holeWrap   = document.getElementById('hole-wrap');
+  const holeEl     = document.getElementById('hole-ellipse');
+  const holeRim    = document.getElementById('hole-rim');
+  const holeGlow   = document.getElementById('hole-glow');
+  const holeShadow = document.getElementById('hole-shadow');
+  const uiLayer    = document.getElementById('ui-layer');
+  const particleL  = document.getElementById('particle-layer');
+  const blinkL     = document.getElementById('blinkFlapLeft');
+  const blinkR     = document.getElementById('blinkFlapRight');
+  const pupilL     = document.getElementById('pupilLeft');
+  const pupilR     = document.getElementById('pupilRight');
+
+  /* ─── Helpers ─── */
+  const vw = () => window.innerWidth;
+
+  function cowStartX() { return -vw() * 0.20; }
+  function cowStopX() {
+    const holeW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--hole-w')) || 170;
+    const cw    = cowWrap.offsetWidth || 220;
+    // Stop so the cow's nose (right edge when flipped) is at the hole left edge
+    return vw() * 0.5 - holeW * 0.5 - cw * 0.48;
+  }
+
+  /* ─── Blink ─── */
+  function blink(delay = 0) {
+    const tl = gsap.timeline({ delay });
+    tl.to([blinkL, blinkR], { attr: { height: 24 }, duration: 0.07, ease: 'power2.in' })
+      .to([blinkL, blinkR], { attr: { height: 0  }, duration: 0.07, ease: 'power2.out' });
+    return tl;
+  }
+
+  /* ════════════════════════════════════════
+     WALK LEGS — pivot from top of each leg group
+     We animate individual child rects within legFL / legFR / legBL / legBR
+     so the upper and lower segments move naturally.
+  ════════════════════════════════════════ */
+
+  // Helper: returns query targets for upper/lower rects inside a leg group
+  function legRects(legEl) {
+    const rects = legEl.querySelectorAll('rect');
+    return { upper: rects[0], lower: rects[1] };
+  }
+
+  /* ════════════════════════════════════════
+     WALK TIMELINE
+  ════════════════════════════════════════ */
+  let walkTL = gsap.timeline({ paused: true });
+
+  function buildWalkTimeline() {
+    walkTL.clear();
+    const dist  = cowStopX() - cowStartX();
+    const speed = 120; // px/s
+    const dur   = dist / speed;
+
+    // Translate cow body across screen
+    walkTL.to(cowWrap, { x: dist, duration: dur, ease: 'none' }, 0);
+
+    // Body vertical bounce
+    walkTL.to(bodyG, { y: -5, duration: 0.26, ease: 'sine.inOut', yoyo: true, repeat: -1 }, 0);
+
+    // Head bob (opposite phase)
+    walkTL.to(headG, { y: 4, duration: 0.26, ease: 'sine.inOut', yoyo: true, repeat: -1 }, 0.13);
+
+    // ── Front legs: swing whole group from hip ──
+    // The SVG is scaleX(-1) so "forward" in walk = negative rotation in SVG space
+    walkTL.to(legFR, {
+      rotation: 22, transformOrigin: '50% 0%',
+      duration: 0.24, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0);
+    walkTL.to(legFL, {
+      rotation: -22, transformOrigin: '50% 0%',
+      duration: 0.24, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0.12);
+
+    // ── Back legs: opposite phase to front ──
+    walkTL.to(legBR, {
+      rotation: 20, transformOrigin: '50% 0%',
+      duration: 0.24, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0.12);
+    walkTL.to(legBL, {
+      rotation: -20, transformOrigin: '50% 0%',
+      duration: 0.24, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0);
+
+    // Tail wag
+    walkTL.to(tail, {
+      rotation: 16, transformOrigin: '0% 50%',
+      duration: 0.48, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0);
+
+    // Ear bounce
+    walkTL.to(earLeft, {
+      rotation: -10, transformOrigin: '80% 80%',
+      duration: 0.32, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0);
+    walkTL.to(earRight, {
+      rotation: 10, transformOrigin: '20% 80%',
+      duration: 0.32, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0.16);
+
+    // Shadow squash
+    walkTL.to(cowShadow, {
+      scaleX: 1.1, duration: 0.26, ease: 'sine.inOut', yoyo: true, repeat: -1
+    }, 0);
+
+    // Auto blink
+    walkTL.call(() => {
+      blink();
+      gsap.delayedCall(3.2 + Math.random() * 1.5, () => blink());
+    }, [], 1.8);
+
+    return walkTL;
+  }
+
+  /* ════════════════════════════════════════
+     CURIOSITY TIMELINE
+  ════════════════════════════════════════ */
+  function buildCuriosityTimeline() {
+    const tl = gsap.timeline({ paused: true });
+
+    // Stop walk oscillations
+    tl.call(() => walkTL.pause(), [], 0);
+
+    // Lean back
+    tl.to(cowWrap, { rotation: -4, duration: 0.5, ease: 'power2.out' }, 0.05);
+    tl.to(headG,   { y: 8, rotation: 5, duration: 0.4, ease: 'power2.out' }, 0.35);
+
+    tl.addLabel('confused', 1.0);
+
+    // Tilts
+    tl.to(headG, { rotation: -14, duration: 0.38, ease: 'power2.inOut' }, 'confused');
+    tl.to(headG, { rotation: 14,  duration: 0.38, ease: 'power2.inOut' }, 'confused+=0.65');
+    tl.to(headG, { rotation: 0,   duration: 0.28, ease: 'power2.inOut' }, 'confused+=1.18');
+
+    // Ear twitch
+    tl.to(earLeft,  { rotation: -18, transformOrigin:'80% 80%', duration:0.1, ease:'back.out(4)', yoyo:true, repeat:3 }, 'confused+=0.2');
+    tl.to(earRight, { rotation:  18, transformOrigin:'20% 80%', duration:0.1, ease:'back.out(4)', yoyo:true, repeat:3 }, 'confused+=0.42');
+
+    // Tail goes still
+    tl.to(tail, { rotation: 0, duration: 0.45, ease: 'power2.out' }, 'confused');
+
+    // Look down — head dips
+    tl.to(headG, { y: 20, duration: 0.4, ease: 'power2.inOut' }, 'confused+=1.45');
+    tl.call(() => blink(), [], 'confused+=1.55');
+    tl.to([pupilL, pupilR], { y: 4, duration: 0.3, ease: 'power2.out' }, 'confused+=1.45');
+
+    return tl;
+  }
+
+  /* ════════════════════════════════════════
+     DUST & PARTICLES
+  ════════════════════════════════════════ */
+  function getHoleCenter() {
+    const r = holeWrap.getBoundingClientRect();
+    return { x: r.left + r.width * 0.5, y: r.top + r.height * 0.5 };
+  }
+
+  function spawnDustCloud() {
+    const { x: cx, y: cy } = getHoleCenter();
+
+    // ── Wave 1: large soft puff rings ──
+    for (let w = 0; w < 3; w++) {
+      const ring = document.createElement('div');
+      ring.classList.add('dust-ring');
+      const sz = 80 + w * 60;
+      ring.style.cssText = `
+        width:${sz}px; height:${sz * 0.45}px;
+        left:${cx - sz/2}px; top:${cy - sz*0.22}px;
+        background: radial-gradient(ellipse at center,
+          rgba(210,180,130,${0.55 - w*0.12}) 0%,
+          rgba(190,155,100,0) 70%);
+        border-radius: 50%;
+        opacity: 0;
+        position: absolute;
+        z-index: 11;
+        pointer-events: none;
+      `;
+      particleL.appendChild(ring);
+      gsap.fromTo(ring,
+        { opacity: 0, scaleX: 0.2, scaleY: 0.2 },
+        {
+          opacity: 1, scaleX: 1, scaleY: 1,
+          duration: 0.35, delay: w * 0.1, ease: 'power2.out',
+          onComplete: () => gsap.to(ring, { opacity: 0, scaleX: 2.2, scaleY: 1.8, duration: 0.9, ease: 'power1.in', onComplete: () => ring.remove() })
+        }
+      );
+    }
+
+    // ── Wave 2: fine dust particles (many small dots) ──
+    for (let i = 0; i < 45; i++) {
+      const p = document.createElement('div');
+      p.classList.add('particle');
+      const sz = 3 + Math.random() * 9;
+      const hue = 25 + Math.random() * 20;
+      const sat = 35 + Math.random() * 25;
+      const lit = 55 + Math.random() * 20;
+      p.style.cssText = `
+        width:${sz}px; height:${sz}px;
+        left:${cx - sz/2}px; top:${cy - sz/2}px;
+        background: hsla(${hue},${sat}%,${lit}%,0.9);
+        border-radius: 50%;
+        position:absolute;
+      `;
+      particleL.appendChild(p);
+      const angle = Math.random() * Math.PI * 2;
+      const dist  = 35 + Math.random() * 140;
+      const upBias = -25 - Math.random() * 60;
+      gsap.to(p, {
+        x: Math.cos(angle) * dist,
+        y: Math.sin(angle) * dist * 0.55 + upBias,
+        opacity: 0,
+        scale: 0.1 + Math.random() * 0.5,
+        duration: 0.7 + Math.random() * 1.0,
+        delay: 0.02 + Math.random() * 0.3,
+        ease: 'power2.out',
+        onComplete: () => p.remove()
+      });
+    }
+
+    // ── Wave 3: chunky soil clumps ──
+    for (let i = 0; i < 14; i++) {
+      const c = document.createElement('div');
+      c.classList.add('clump');
+      const w2 = 8 + Math.random() * 16;
+      const h2 = 6 + Math.random() * 12;
+      const hue = 20 + Math.random() * 15;
+      c.style.cssText = `
+        width:${w2}px; height:${h2}px;
+        left:${cx - w2/2}px; top:${cy - h2/2}px;
+        background: hsl(${hue},55%,${30 + Math.random()*20}%);
+        border-radius: 30% 60% 40% 70%;
+        position:absolute;
+      `;
+      particleL.appendChild(c);
+      const angle  = -Math.PI * 0.1 + Math.random() * Math.PI * 1.2; // mostly upward arc
+      const dist2  = 50 + Math.random() * 110;
+      const spin   = (Math.random() - 0.5) * 720;
+      gsap.to(c, {
+        x: Math.cos(angle) * dist2,
+        y: Math.sin(angle) * dist2 * 0.6 - 40 - Math.random() * 40,
+        rotation: spin,
+        opacity: 0,
+        duration: 0.8 + Math.random() * 0.7,
+        delay: Math.random() * 0.18,
+        ease: 'power2.out',
+        onComplete: () => c.remove()
+      });
+    }
+
+    // ── Wave 4: lingering haze blob that expands and fades ──
+    const haze = document.createElement('div');
+    const hz = 220;
+    haze.style.cssText = `
+      position:absolute;
+      width:${hz}px; height:${hz*0.5}px;
+      left:${cx - hz/2}px; top:${cy - hz*0.3}px;
+      background: radial-gradient(ellipse at center,
+        rgba(205,175,120,0.4) 0%,
+        rgba(190,155,100,0) 70%);
+      border-radius: 50%;
+      opacity:0;
+      pointer-events:none;
+      z-index:10;
+    `;
+    particleL.appendChild(haze);
+    gsap.to(haze, {
+      opacity: 1, scaleX: 1.8, scaleY: 1.6, y: -30,
+      duration: 0.5, ease: 'power2.out',
+      onComplete: () => gsap.to(haze, { opacity: 0, scaleX: 3, duration: 1.8, ease: 'power1.in', onComplete: () => haze.remove() })
+    });
+  }
+
+  /* ─── Camera shake ─── */
+  function cameraShake(el) {
+    const tl = gsap.timeline();
+    const frames = [
+      [3.5, -2], [-3, 2.5], [2.5, -3], [-2, 1.5], [1.5, -2], [-1, 1]
+    ];
+    frames.forEach(([dx, dy]) => {
+      tl.to(el, { x: dx, y: dy, duration: 0.042, ease: 'none' });
+    });
+    tl.to(el, { x: 0, y: 0, duration: 0.12, ease: 'power2.out' });
+    return tl;
+  }
+
+  /* ════════════════════════════════════════
+     FALL TIMELINE
+  ════════════════════════════════════════ */
+  function buildFallTimeline() {
+    const tl = gsap.timeline({ paused: true });
+
+    // ── Phase 1: Slip ──
+    // Front legs shoot forward (SVG is flipped: negative rotation = forward visually)
+    tl.to(legFL, { rotation: -38, x: -10, transformOrigin: '50% 0%', duration: 0.28, ease: 'power3.out' }, 0);
+    tl.to(legFR, { rotation: -50, x: -16, transformOrigin: '50% 0%', duration: 0.28, ease: 'power3.out' }, 0.05);
+
+    // Rear legs dig back / scramble
+    tl.to(legBL, {
+      rotation: 28, transformOrigin:'50% 0%',
+      x: 10, duration: 0.22, ease:'power2.inOut', yoyo:true, repeat:2
+    }, 0.1);
+    tl.to(legBR, {
+      rotation: 32, transformOrigin:'50% 0%',
+      x: 14, duration: 0.22, ease:'power2.inOut', yoyo:true, repeat:2
+    }, 0.15);
+
+    // Body tips forward
+    tl.to(bodyG, { rotation: 10, y: 8, duration: 0.3, ease: 'power2.out' }, 0.06);
+    // Tail panic
+    tl.to(tail,  { rotation: -75, duration: 0.32, ease: 'back.out(2)' }, 0.08);
+    // Head lurches
+    tl.to(headG, { x: -14, y: -5, duration: 0.28, ease: 'power2.out' }, 0.08);
+
+    tl.addLabel('slip_end', 0.6);
+
+    // ── Phase 2: Slide into hole ──
+    // Cow translates toward hole center while rotating and shrinking
+    // Get delta from current stop position to hole center
+    tl.call(() => {
+      // Compute how far the cow needs to slide right (into hole)
+      const hRect = holeWrap.getBoundingClientRect();
+      const cRect = cowWrap.getBoundingClientRect();
+      const holeCx = hRect.left + hRect.width * 0.5;
+      const cowCx  = cRect.left + cRect.width * 0.5;
+      const deltaX = holeCx - cowCx;
+
+      // Slide + spin + shrink in one motion
+      gsap.to(cowWrap, {
+        x: `+=${deltaX}`,
+        y: 30,
+        rotation: 90,           // tips head-first (nose down since SVG is flipped)
+        transformOrigin: '50% 80%',
+        scale: 0.1,
+        duration: 1.1,
+        ease: 'power3.in'
+      });
+      gsap.to(cowWrap, {
+        opacity: 0,
+        duration: 0.35,
+        delay: 0.75,
+        ease: 'power2.in'
+      });
+      gsap.to(cowShadow, {
+        opacity: 0, scaleX: 0.1,
+        duration: 0.6, ease: 'power2.in'
+      });
+    }, [], 'slip_end');
+
+    // Legs keep flailing while falling
+    tl.to([legFL, legFR], {
+      rotation: -60, transformOrigin:'50% 0%',
+      duration:0.18, ease:'sine.inOut', yoyo:true, repeat:5
+    }, 'slip_end+=0.1');
+    tl.to([legBL, legBR], {
+      rotation: 45, transformOrigin:'50% 0%',
+      duration:0.18, ease:'sine.inOut', yoyo:true, repeat:5
+    }, 'slip_end+=0.15');
+    tl.to(tail, {
+      rotation: 50, duration:0.14, ease:'sine.inOut', yoyo:true, repeat:7
+    }, 'slip_end');
+
+    tl.addLabel('impact', 'slip_end+=0.55');
+
+    // ── Hole expands on impact ──
+    tl.to(holeEl, {
+      scaleX: 1.18, scaleY: 1.22,
+      transformOrigin: '50% 50%',
+      duration: 0.22, ease: 'power2.out'
+    }, 'impact');
+    tl.to(holeEl, {
+      scaleX: 1, scaleY: 1,
+      duration: 0.55, ease: 'elastic.out(1.2,0.45)'
+    }, 'impact+=0.22');
+
+    // Rim shockwave pulse
+    tl.to(holeRim, {
+      border: '6px solid rgba(210,170,90,0.7)',
+      scale: 1.35,
+      transformOrigin: '50% 50%',
+      duration: 0.18, ease: 'power2.out'
+    }, 'impact');
+    tl.to(holeRim, {
+      border: '0px solid transparent',
+      scale: 1.9,
+      opacity: 0,
+      duration: 0.55, ease: 'power2.in'
+    }, 'impact+=0.18');
+
+    // Glow
+    tl.to(holeGlow, {
+      background: 'radial-gradient(ellipse at center, rgba(255,150,60,0.45) 0%, rgba(255,80,20,0) 100%)',
+      opacity: 1, duration: 0.25, ease: 'power2.out'
+    }, 'impact');
+    tl.to(holeGlow, {
+      opacity: 0, duration: 0.6, ease: 'power2.in'
+    }, 'impact+=0.3');
+
+    // Shadow swell
+    tl.to(holeShadow, {
+      scaleX: 1.6, scaleY: 1.5, opacity: 0.7,
+      duration: 0.22, ease: 'power2.out'
+    }, 'impact');
+    tl.to(holeShadow, {
+      scaleX: 1, scaleY: 1, opacity: 1,
+      duration: 0.6, ease: 'elastic.out(1,0.5)'
+    }, 'impact+=0.22');
+
+    // Camera shake
+    tl.call(() => cameraShake(document.getElementById('anim-layer')), [], 'impact+=0.02');
+
+    // ── DUST ──
+    tl.call(() => spawnDustCloud(), [], 'impact');
+
+    return tl;
+  }
+
+  /* ════════════════════════════════════════
+     UI TIMELINE
+  ════════════════════════════════════════ */
+  function buildUITimeline() {
+    const tl = gsap.timeline({ paused: true });
+    tl.set(uiLayer, { opacity: 1 });
+    tl.call(() => uiLayer.classList.add('active'));
+    tl.to('#d4', { opacity:1, y:0, scale:1, duration:0.55, ease:'back.out(1.7)' }, 0);
+    tl.to('#d0', { opacity:1, y:0, scale:1, duration:0.55, ease:'back.out(1.7)' }, 0.13);
+    tl.to('#d1', { opacity:1, y:0, scale:1, duration:0.55, ease:'back.out(1.7)' }, 0.26);
+    tl.to('#subtitle',  { opacity:1, y:0, duration:0.5, ease:'power3.out' }, 0.48);
+    tl.to('#home-btn',  { opacity:1, scale:1, duration:0.55, ease:'back.out(1.8)' }, 0.64);
+    return tl;
+  }
+
+  /* ════════════════════════════════════════
+     MASTER TIMELINE
+  ════════════════════════════════════════ */
+  function init() {
+    gsap.set(cowWrap, { x: cowStartX() });
+
+    buildWalkTimeline();
+    const curiosityTL = buildCuriosityTimeline();
+    const fallTL      = buildFallTimeline();
+    const uiTL        = buildUITimeline();
+
+    const master = gsap.timeline();
+
+    // Scene 1 — environment only
+    master.to({}, { duration: 0.5 });
+
+    // Walk
+    master.call(() => walkTL.play());
+
+    const walkDur = Math.abs(cowStopX() - cowStartX()) / 120;
+    master.to({}, { duration: walkDur });
+
+    master.call(() => walkTL.pause());
+
+    // Curiosity
+    master.call(() => curiosityTL.play());
+    master.to({}, { duration: 2.3 });
+
+    // Fall
+    master.call(() => fallTL.play());
+    master.to({}, { duration: 2.1 });
+
+    // Silence
+    master.to({}, { duration: 0.4 });
+
+    // UI
+    master.call(() => uiTL.play());
+  }
+
+  /* ─── Mouse: pupils track cursor ─── */
+  window.addEventListener('mousemove', e => {
+    if (!cowWrap) return;
+    const r   = cowWrap.getBoundingClientRect();
+    // Head is on the right side of the flipped SVG ≈ 30% from right
+    const hcx = r.right  - r.width  * 0.30;
+    const hcy = r.top    + r.height * 0.28;
+    const dx  = e.clientX - hcx;
+    const dy  = e.clientY - hcy;
+    const d   = Math.sqrt(dx*dx + dy*dy) || 1;
+    const f   = Math.min(d, 280) / 280 * 2.8;
+    gsap.to([pupilL, pupilR], { x: dx/d*f, y: dy/d*f, duration:0.22, ease:'power2.out', overwrite:'auto' });
+  });
+
+  window.addEventListener('load', init);
+})();
+</script>
+</body>
+</html>
